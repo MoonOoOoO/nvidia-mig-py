@@ -25,6 +25,6 @@ A Python library for managing NVIDIA GPU Multi-Instance GPU (MIG) partitions and
 To install the library, simply clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/yourusername/nvidia_mig_manager.git
+git clone git@github.com:MoonOoOoO/nvidia-mig-py.git
 pip install .
 ```
