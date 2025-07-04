@@ -1,6 +1,6 @@
 # NVIDIA MIG Manager
 
-A Python library for managing NVIDIA GPU Multi-Instance GPU (MIG) partitions and resources. This library provides a simple interface to create, list, and destroy MIG partitions, as well as monitor their resource usage. 
+A Python library for managing NVIDIA GPU Multi-Instance GPU (MIG) partitions and resources. This library provides a simple interface to create, list, and destroy MIG partitions, as well as monitor their resource usage. **Only tested with NVIDIA A30 GPUs.**
 
 ---
 
