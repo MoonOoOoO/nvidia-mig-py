@@ -39,12 +39,24 @@ class MIGConfigManager:
     # regex for not support
     _NOT_SUPPORT_PATTERN = r'\bNot\s+Supported\b'
 
+    # regex for disabled
+    _DISABLED_PATTERN = r'\bDisabled\b'
+
     def __init__(self) -> None:
         # get GPU information
         self._gpu_list = {}
         self._mig_profile = {}
         self.cur_dir = os.path.dirname(os.path.abspath(__file__))
         self._gpu_profile_json = self.cur_dir + '/mig_profile.json'
+
+        nvsmi_cmd = f'nvidia-smi'
+        exit_status, out = exec_cmd(nvsmi_cmd)
+        if exit_status != 0:
+            raise RuntimeError(f"Failed to execute nvidia-smi command: {out}")
+
+        # check if MIG is disabled
+        if re.search(self._DISABLED_PATTERN, out):
+            raise Exception("MIG mode is disabled on the system. Please use enable_mig_mode() to enable.")
 
         list_gpu_cmd = f'sudo nvidia-smi -L'
         exit_status, out = exec_cmd(list_gpu_cmd)
@@ -260,6 +272,10 @@ class MIGConfigManager:
                 raise Exception("Invalid GPU ID")
             else:
                 gpu_id = ','.join([str(i) for i in gpu_id])
+        elif gpu_id is not None and not isinstance(gpu_id, int):
+            raise TypeError("gpu_id must be an int or a list of ints")
+        elif gpu_id not in self._gpu_list:
+            raise ValueError(f"Invalid GPU ID {gpu_id}, available GPUs are {list(self._gpu_list.keys())}")
 
         disable_pm_cmd = f'sudo nvidia-smi -pm 0'  # disable persistence mode on all GPUs
 
@@ -295,6 +311,9 @@ class MIGConfigManager:
             raise FileNotFoundError(
                 "MIG profile file not found, please run _profile_mig_config() first"
             )
+
+        if gpu_id not in self._gpu_list:
+            raise ValueError(f"Invalid GPU ID {gpu_id}, available GPUs are {list(self._gpu_list.keys())}")
 
         # get valid instance IDs for given GPU
         valid_profile_ids = [int(item) for item in self._mig_profile[f'gpu-{gpu_id}'].keys()]

@@ -21,21 +21,23 @@ class MIGInstanceAllocator:
 
         self._mcg = MIGConfigManager()
         self._mig_profile = self._mcg.get_mig_profile()
-        # gpu_id, gi_id, ci_id, dev_id, uuid, mig_profile, pid, p_name, mem_usage
+        # gpu_id, gi_id, ci_id, dev_id, uuid, mig_profile, pid, p_name, mem_usage, allocated
         self._mig_resource_list = []
         self.init_mig_resources()
 
     def init_mig_resources(self):
         try:
             self._update_mig_resource_status()
-        except RuntimeError as e:
+        except Exception:
             self._reinitialize_mig_resources()
+            print(f"Finished reinitializing MIG resources.")
             self._update_mig_resource_status()
 
         gpu_ids_to_be_reset = self._are_idle_mig_instances_smallest()
         if not gpu_ids_to_be_reset:
             return
         self._reinitialize_mig_resources(gpu_ids_to_be_reset)
+        print(f"Finished reinitializing MIG resources.")
         # Reinitialize the MIG resource list after resetting the MIG instances
         self._update_mig_resource_status()
 
@@ -82,6 +84,9 @@ class MIGInstanceAllocator:
                 )
             mig_resource = self.get_mig_resource_by_memory(required_mem, gpu_id)
 
+        # set the allocated flag to True
+        mig_resource["allocated"] = True
+
         # temporarily set the PID to -1 to indicate that the resource is being allocated
         mig_resource["pid"] = -1
         return mig_resource
@@ -104,10 +109,11 @@ class MIGInstanceAllocator:
                 "mig_profile": mig_profile,
                 "pid": None,
                 "p_name": None,
-                "mem_usage": None
+                "mem_usage": None,
+                "allocated": False
             }
         Raises:
-            ValueError: If no MIG compute instance without PID is found with the required memory.
+            ValueError: If no available MIG compute instance is found with the required memory.
         """
 
         if self._all_instances_busy():
@@ -122,7 +128,7 @@ class MIGInstanceAllocator:
         # Filter resources without PID and (if specified) matching gpu_id
         filtered_resources = []
         for mig_instance_resource in self._mig_resource_list:
-            if mig_instance_resource["pid"] is None:
+            if mig_instance_resource["allocated"] is False:  # Check if the resource is not allocated
                 if gpu_id is None or mig_instance_resource["gpu_id"] == gpu_id:
                     filtered_resources.append(mig_instance_resource)
 
@@ -297,7 +303,14 @@ class MIGInstanceAllocator:
         Raises:
             RuntimeError: If the `nvidia-smi` command fails to execute or returns an error.
         """
+
+        allocated_resources = [
+            resource for resource in self._mig_resource_list if resource["allocated"]
+        ]
+        allocated_mig_uuids = [resource["uuid"] for resource in allocated_resources]
+
         self._mig_resource_list.clear()
+        self._mig_resource_list.extend(allocated_resources)
         ci_list = self._mcg.list_compute_instances()
         uuid_list = self._mcg.get_mig_devices_uuids()
 
@@ -328,6 +341,9 @@ class MIGInstanceAllocator:
                 ), None
             )
             uuid = uuid_match['uuid'] if uuid_match else None
+            if uuid in allocated_mig_uuids:
+                # Skip already allocated MIG resources
+                continue
             resource_info = {
                 "gpu_id": gpu_id,
                 "gi_id": gi_id,
@@ -337,7 +353,8 @@ class MIGInstanceAllocator:
                 "mig_profile": mig_profile,
                 "pid": None,
                 "p_name": None,
-                "mem_usage": None
+                "mem_usage": None,
+                "allocated": False  # Initially set to False
             }
             self._mig_resource_list.append(resource_info)
             self._update_mig_resource_pid(out)
@@ -394,6 +411,7 @@ class MIGInstanceAllocator:
                     resource["pid"] = pid
                     resource["p_name"] = proc_name
                     resource["mem_usage"] = mem_usage
+                    resource["allocated"] = True
                     break
 
     def _all_instances_busy(self):
@@ -401,7 +419,7 @@ class MIGInstanceAllocator:
         Returns:
             bool: True if all MIG instances are busy, False otherwise.
         """
-        return all(resource["pid"] is not None for resource in self._mig_resource_list)
+        return all(resource["allocated"] for resource in self._mig_resource_list)
 
     def _all_instances_busy_by_gpu(self, gpu_id: int):
         """ Check if all MIG instances on a specific GPU are busy.
@@ -411,6 +429,6 @@ class MIGInstanceAllocator:
             bool: True if all MIG instances on the specified GPU are busy, False otherwise.
         """
         return all(
-            resource["pid"] is not None for resource in self._mig_resource_list
+            resource["allocated"] for resource in self._mig_resource_list
             if resource["gpu_id"] == gpu_id
         )
