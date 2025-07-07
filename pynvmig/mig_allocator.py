@@ -193,7 +193,8 @@ class MIGInstanceAllocator:
             best_profile_key = min(valid_profiles, key=valid_profiles.get)
             selected_profile = profiles[best_profile_key]
 
-            # TODO dynamically create the MIG instance
+            # TODO currently can't breakdown large instances, needs reinitialization
+
             # find all free 6gb instances from the mig_resource_list on the same GPU
             free_instances = [
                 resource for resource in self._mig_resource_list
@@ -242,7 +243,7 @@ class MIGInstanceAllocator:
             self._update_mig_resource_status()
             return True
 
-        raise ValueError(
+        raise RuntimeError(
             f"Insufficient free memory to create a MIG instance with {required_mem}GB "
             f"{f'on GPU {gpu_id}' if gpu_id is not None else 'on any available GPU'}. "
             f"Consider requesting a smaller memory size or freeing up existing instances."
@@ -359,25 +360,33 @@ class MIGInstanceAllocator:
             self._mig_resource_list.append(resource_info)
             self._update_mig_resource_pid(out)
 
-    def _are_idle_mig_instances_smallest(self):
+    def _are_idle_mig_instances_smallest(self, gpu_id=None):
         """ Check if all idle MIG instances are the smallest available for all GPUs.
         Returns:
             list: List of GPU IDs that have idle MIG instances which are not the smallest.
             If all idle MIG instances are the smallest, returns an empty list.
         """
-        ret_gpu_ids = []
+        rest_gpu_ids = []
         for resource in self._mig_resource_list:
             if resource["pid"] is None:
                 # If the resource has no PID, check if it is the smallest MIG instance
-                gpu_id = resource["gpu_id"]
+                gpu_index = resource["gpu_id"]
+                if gpu_id is not None and gpu_index != resource["gpu_id"]:
+                    # skip if the GPU ID does not match the specified gpu_id
+                    continue
                 gi_id = resource["gi_id"]
                 mig_profile = resource["mig_profile"]
 
                 # Get the smallest MIG profile for this GPU
-                s_gi_id, smallest_profile = self._mcg.get_smallest_mig_profile(gpu_id)
+                s_gi_id, smallest_profile = self._mcg.get_smallest_mig_profile(gpu_index)
                 if gi_id != s_gi_id and mig_profile != smallest_profile:
-                    ret_gpu_ids.append(gpu_id)
-        return list(set(ret_gpu_ids))
+                    rest_gpu_ids.append(gpu_index)
+
+        if gpu_id is not None:
+            # return true or false if gpu_id is specified
+            return len(rest_gpu_ids) > 0
+        else:
+            return list(set(rest_gpu_ids))
 
     def _update_mig_resource_pid(self, nvsmi_output=None):
         """ Update the PID and process name for each MIG resource.
