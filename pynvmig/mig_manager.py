@@ -504,8 +504,8 @@ class MIGConfigManager:
         If gpu_id and gi_id are not specified, destroy GPU instances on all GPUs with all MIG profiles.
 
         Args:
-            gpu_id (int): The GPU ID to destroy the GPU instance on.
-            gi_id (int or list[int]): The MIG profile ID to destroy the GPU instance with.
+            gpu_id (int): The GPU ID to destroy the GPU instance on. If None, destroy GPU instances on all GPUs.
+            gi_id (int or list[int]): The MIG profile ID to destroy the GPU instance with. If none, destroy all GPU instances on the GPU.
 
         Returns:
             list[str]: A list of MIG UUIDs of the destroyed GPU instance.
